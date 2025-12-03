@@ -1,0 +1,152 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Product Import Schema",
+  "description": "Schema for importing products via JSON",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Nombre del Producto",
+      "minLength": 1,
+      "maxLength": 255
+    },
+    "slug": {
+      "type": "string",
+      "description": "URL slug (auto-generated if empty)",
+      "maxLength": 255
+    },
+    "short_description": {
+      "type": "string",
+      "description": "Descripción Corta",
+      "maxLength": 500
+    },
+    "description": {
+      "type": "string",
+      "description": "Descripción Detallada"
+    },
+    "price": {
+      "type": "number",
+      "description": "Precio",
+      "minimum": 0
+    },
+    "compare_at_price": {
+      "type": "number",
+      "description": "Precio Comparado (opcional)",
+      "minimum": 0
+    },
+    "inventory_quantity": {
+      "type": "integer",
+      "description": "Cantidad en Stock",
+      "minimum": 0,
+      "default": 0
+    },
+    "category_id": {
+      "type": "string",
+      "description": "ID de la Categoría"
+    },
+    "featured_image": {
+      "type": "string",
+      "description": "Imagen Principal (URL)",
+      "format": "uri"
+    },
+    "gallery": {
+      "type": "array",
+      "description": "Galería de Imágenes (máximo 4 adicionales)",
+      "items": {
+        "type": "string",
+        "format": "uri"
+      },
+      "maxItems": 4
+    },
+    "skin_type": {
+      "type": "array",
+      "description": "Tipos de Piel",
+      "items": {
+        "type": "string",
+        "enum": ["dry", "oily", "combination", "sensitive", "normal", "mature"]
+      }
+    },
+    "benefits": {
+      "type": "array",
+      "description": "Beneficios",
+      "items": {
+        "type": "string",
+        "enum": [
+          "Hidratante",
+          "Anti-edad",
+          "Regenerador",
+          "Nutritivo",
+          "Tonificante",
+          "Equilibrante",
+          "Refrescante",
+          "Exfoliante",
+          "Antibacteriano",
+          "Relajante",
+          "Aromático"
+        ]
+      }
+    },
+    "certifications": {
+      "type": "array",
+      "description": "Certificaciones",
+      "items": {
+        "type": "string",
+        "enum": ["organic", "cruelty-free", "vegan", "natural", "eco-friendly"]
+      }
+    },
+    "ingredients": {
+      "type": "array",
+      "description": "Ingredientes",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Nombre del ingrediente"
+          },
+          "percentage": {
+            "type": "number",
+            "description": "Porcentaje (opcional)",
+            "minimum": 0,
+            "maximum": 100
+          }
+        },
+        "required": ["name"]
+      }
+    },
+    "usage_instructions": {
+      "type": "string",
+      "description": "Instrucciones de Uso"
+    },
+    "precautions": {
+      "type": "string",
+      "description": "Precauciones"
+    },
+    "weight": {
+      "type": "number",
+      "description": "Peso en gramos",
+      "minimum": 0
+    },
+    "dimensions": {
+      "type": "string",
+      "description": "Dimensiones (ej: 15x10x5 cm)"
+    },
+    "package_characteristics": {
+      "type": "string",
+      "description": "Características del Empaque"
+    },
+    "is_featured": {
+      "type": "boolean",
+      "description": "Producto Destacado",
+      "default": false
+    },
+    "status": {
+      "type": "string",
+      "description": "Estado del Producto",
+      "enum": ["active", "draft", "archived"],
+      "default": "active"
+    }
+  },
+  "required": ["name", "price", "category_id"],
+  "additionalProperties": false
+}

@@ -1,0 +1,570 @@
+"use client";
+
+import { useState, useEffect, useRef } from 'react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Switch } from '@/components/ui/switch';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
+import { 
+  Save, 
+  X, 
+  Eye, 
+  Code,
+  FileText,
+  Sparkles
+} from 'lucide-react';
+import { toast } from 'sonner';
+import { replaceTemplateVariables, getDefaultVariables } from '@/lib/email/template-utils';
+
+interface EmailTemplate {
+  id: string;
+  name: string;
+  type: string;
+  subject: string;
+  content: string;
+  variables: string[];
+  is_active: boolean;
+  is_system?: boolean;
+}
+
+interface EmailTemplateEditorProps {
+  template?: EmailTemplate;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSave: () => void;
+}
+
+// Predefined email templates
+const emailTemplates = {
+  simple: {
+    name: 'Plantilla Simple',
+    html: `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+    .header { background: #8B4513; color: white; padding: 20px; text-align: center; }
+    .content { padding: 20px; background: #fff; }
+    .footer { background: #f8f9fa; padding: 15px; text-align: center; font-size: 12px; color: #666; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>{{company_name}}</h1>
+    </div>
+    <div class="content">
+      <p>Hola {{customer_name}},</p>
+      <p>Tu mensaje aquí...</p>
+    </div>
+    <div class="footer">
+      <p>{{company_name}} | {{support_email}}</p>
+    </div>
+  </div>
+</body>
+</html>`
+  },
+  modern: {
+    name: 'Plantilla Moderna',
+    html: `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background: #f4f4f4; }
+    .container { max-width: 600px; margin: 20px auto; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+    .header { background: linear-gradient(135deg, #8B5A2B 0%, #D4A574 100%); color: white; padding: 30px 20px; text-align: center; }
+    .content { padding: 30px; }
+    .button { display: inline-block; padding: 12px 24px; background: #8B4513; color: white; text-decoration: none; border-radius: 6px; margin: 20px 0; }
+    .footer { background: #f8f9fa; padding: 20px; text-align: center; font-size: 14px; color: #666; border-top: 1px solid #eee; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1 style="margin: 0;">{{company_name}}</h1>
+      <p style="margin: 10px 0 0 0; opacity: 0.9;">Biocosmética & Bienestar Holístico</p>
+    </div>
+    <div class="content">
+      <h2>Hola {{customer_name}},</h2>
+      <p>Tu mensaje aquí...</p>
+      <a href="#" class="button">Acción</a>
+    </div>
+    <div class="footer">
+      <p><strong>{{company_name}}</strong><br>{{support_email}}</p>
+    </div>
+  </div>
+</body>
+</html>`
+  },
+  minimal: {
+    name: 'Plantilla Minimalista',
+    html: `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { font-family: Georgia, serif; line-height: 1.8; color: #333; margin: 0; padding: 40px 20px; background: #fff; }
+    .container { max-width: 600px; margin: 0 auto; }
+    .content { padding: 20px 0; border-top: 2px solid #8B4513; border-bottom: 2px solid #8B4513; margin: 20px 0; }
+    .signature { margin-top: 40px; font-style: italic; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1 style="color: #8B4513; margin-bottom: 30px;">{{company_name}}</h1>
+    <div class="content">
+      <p>Hola {{customer_name}},</p>
+      <p>Tu mensaje aquí...</p>
+    </div>
+    <div class="signature">
+      <p>Con amor y luz,<br>El equipo de {{company_name}}</p>
+    </div>
+  </div>
+</body>
+</html>`
+  }
+};
+
+export default function EmailTemplateEditor({
+  template,
+  open,
+  onOpenChange,
+  onSave
+}: EmailTemplateEditorProps) {
+  const [loading, setLoading] = useState(false);
+  const [showPreview, setShowPreview] = useState(true);
+  const [formData, setFormData] = useState({
+    name: '',
+    type: 'custom',
+    subject: '',
+    content: '',
+    is_active: true
+  });
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+
+  useEffect(() => {
+    if (template) {
+      setFormData({
+        name: template.name || '',
+        type: template.type || 'custom',
+        subject: template.subject || '',
+        content: template.content || '',
+        is_active: template.is_active ?? true
+      });
+    } else {
+      setFormData({
+        name: '',
+        type: 'custom',
+        subject: '',
+        content: emailTemplates.modern.html,
+        is_active: true
+      });
+    }
+  }, [template, open]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!formData.name || !formData.subject || !formData.content) {
+      toast.error('Por favor completa todos los campos requeridos');
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      const submitData = {
+        ...formData
+      };
+
+      if (template) {
+        // Update existing template
+        const response = await fetch(`/api/admin/system/email-templates/${template.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(submitData)
+        });
+
+        if (!response.ok) {
+          const data = await response.json();
+          throw new Error(data.error || 'Error al actualizar plantilla');
+        }
+
+        toast.success('Plantilla actualizada exitosamente');
+      } else {
+        // Create new template
+        const response = await fetch('/api/admin/system/email-templates', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(submitData)
+        });
+
+        if (!response.ok) {
+          const data = await response.json();
+          throw new Error(data.error || 'Error al crear plantilla');
+        }
+
+        toast.success('Plantilla creada exitosamente');
+      }
+
+      onSave();
+      onOpenChange(false);
+    } catch (error) {
+      console.error('Error saving template:', error);
+      toast.error(error instanceof Error ? error.message : 'Error al guardar plantilla');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const availableVariables = [
+    { key: 'customer_name', label: 'Nombre del Cliente', description: 'Nombre completo del cliente' },
+    { key: 'order_number', label: 'Número de Pedido', description: 'Número único del pedido' },
+    { key: 'order_total', label: 'Total del Pedido', description: 'Monto total formateado' },
+    { key: 'order_date', label: 'Fecha del Pedido', description: 'Fecha formateada del pedido' },
+    { key: 'order_items', label: 'Items del Pedido', description: 'Lista HTML de productos' },
+    { key: 'company_name', label: 'Nombre de la Empresa', description: 'DA LUZ CONSCIENTE' },
+    { key: 'support_email', label: 'Email de Soporte', description: 'soporte@daluzconsciente.com' },
+    { key: 'contact_email', label: 'Email de Contacto', description: 'contacto@daluzconsciente.com' },
+    { key: 'website_url', label: 'URL del Sitio', description: 'URL del sitio web' },
+    { key: 'tracking_number', label: 'Número de Seguimiento', description: 'Número de tracking del envío' },
+    { key: 'carrier', label: 'Transportista', description: 'Nombre de la empresa de envío' },
+    { key: 'estimated_delivery', label: 'Entrega Estimada', description: 'Fecha estimada de entrega' },
+    { key: 'delivery_date', label: 'Fecha de Entrega', description: 'Fecha de entrega' },
+    { key: 'payment_method', label: 'Método de Pago', description: 'Método de pago utilizado' },
+    { key: 'transaction_id', label: 'ID de Transacción', description: 'ID de la transacción' },
+    { key: 'amount', label: 'Monto', description: 'Monto del pago' },
+    { key: 'membership_tier', label: 'Tipo de Membresía', description: 'Tipo de membresía' },
+    { key: 'membership_start_date', label: 'Fecha de Inicio', description: 'Fecha de inicio de membresía' },
+    { key: 'access_url', label: 'URL de Acceso', description: 'URL para acceder a la membresía' },
+    { key: 'reset_link', label: 'Enlace de Restablecimiento', description: 'URL para resetear contraseña' },
+    { key: 'reset_url', label: 'URL de Restablecimiento', description: 'URL para resetear contraseña' },
+    { key: 'account_url', label: 'URL de Cuenta', description: 'URL de la cuenta del usuario' },
+    { key: 'renewal_url', label: 'URL de Renovación', description: 'URL para renovar membresía' },
+    { key: 'days_remaining', label: 'Días Restantes', description: 'Días restantes de membresía' },
+    { key: 'low_stock_products', label: 'Productos con Stock Bajo', description: 'Lista de productos con stock bajo' },
+  ];
+
+  const insertVariable = (variable: string) => {
+    const textarea = textareaRef.current;
+    if (textarea) {
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const text = textarea.value;
+      const before = text.substring(0, start);
+      const after = text.substring(end);
+      const newText = before + `{{${variable}}}` + after;
+      setFormData({ ...formData, content: newText });
+      
+      setTimeout(() => {
+        textarea.focus();
+        textarea.setSelectionRange(start + variable.length + 4, start + variable.length + 4);
+      }, 0);
+    }
+  };
+
+  const applyTemplate = (templateKey: keyof typeof emailTemplates) => {
+    const selectedTemplate = emailTemplates[templateKey];
+    setFormData({ ...formData, content: selectedTemplate.html });
+    toast.success(`Plantilla "${selectedTemplate.name}" aplicada`);
+  };
+
+  // Get preview HTML with variables replaced
+  const getPreviewHtml = (): string => {
+    const defaultVars = getDefaultVariables();
+    const previewVars = {
+      ...defaultVars,
+      customer_name: 'María González',
+      order_number: 'ORD-12345',
+      order_total: '$15.000,00',
+      order_date: '15 de enero de 2025',
+      order_items: '<div>Producto 1 x 2 - $10.000</div><div>Producto 2 x 1 - $5.000</div>',
+      tracking_number: 'ABC123456789',
+      carrier: 'Correo Argentino',
+      estimated_delivery: '22 de enero de 2025',
+      delivery_date: '20 de enero de 2025',
+      payment_method: 'Tarjeta de Crédito',
+      transaction_id: 'MP-123456789',
+      amount: '$15.000,00',
+      membership_tier: 'Transformación Completa',
+      membership_start_date: '15 de enero de 2025',
+      access_url: 'https://daluzconsciente.com/mi-cuenta',
+      reset_link: 'https://daluzconsciente.com/reset-password?token=xxx',
+      reset_url: 'https://daluzconsciente.com/reset-password?token=xxx',
+      account_url: 'https://daluzconsciente.com/mi-cuenta',
+      renewal_url: 'https://daluzconsciente.com/membresias',
+      days_remaining: '15',
+      low_stock_products: '<div>Producto A - Stock: 3</div><div>Producto B - Stock: 2</div>',
+    };
+
+    return replaceTemplateVariables(formData.content, previewVars);
+  };
+
+  const getPreviewSubject = (): string => {
+    const previewVars = {
+      ...getDefaultVariables(),
+      customer_name: 'María González',
+      order_number: 'ORD-12345',
+      order_total: '$15.000,00',
+      order_date: '15 de enero de 2025',
+    };
+    return replaceTemplateVariables(formData.subject, previewVars);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-7xl max-h-[95vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>
+            {template ? 'Editar Plantilla' : 'Nueva Plantilla'}
+          </DialogTitle>
+          <DialogDescription>
+            {template 
+              ? 'Modifica la plantilla de email. Los cambios se aplicarán automáticamente en los próximos emails.'
+              : 'Crea una nueva plantilla de email para el sistema'
+            }
+          </DialogDescription>
+        </DialogHeader>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Basic Info */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="name">Nombre de la Plantilla *</Label>
+              <Input
+                id="name"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                placeholder="Ej: Confirmación de Pedido"
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="type">Tipo *</Label>
+              <Select
+                value={formData.type}
+                onValueChange={(value) => setFormData({ ...formData, type: value })}
+                disabled={!!template?.is_system}
+              >
+                <SelectTrigger id="type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="order_confirmation">Confirmación de Pedido</SelectItem>
+                  <SelectItem value="order_shipped">Pedido Enviado</SelectItem>
+                  <SelectItem value="order_delivered">Pedido Entregado</SelectItem>
+                  <SelectItem value="password_reset">Restablecer Contraseña</SelectItem>
+                  <SelectItem value="account_welcome">Bienvenida</SelectItem>
+                  <SelectItem value="membership_welcome">Bienvenida Membresía</SelectItem>
+                  <SelectItem value="membership_reminder">Recordatorio Membresía</SelectItem>
+                  <SelectItem value="payment_success">Pago Exitoso</SelectItem>
+                  <SelectItem value="payment_failed">Pago Fallido</SelectItem>
+                  <SelectItem value="low_stock_alert">Alerta de Stock Bajo</SelectItem>
+                  <SelectItem value="marketing">Marketing</SelectItem>
+                  <SelectItem value="custom">Personalizado</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {/* Subject */}
+          <div className="space-y-2">
+            <Label htmlFor="subject">Asunto *</Label>
+            <Input
+              id="subject"
+              value={formData.subject}
+              onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
+              placeholder="Ej: Confirmación de tu pedido {{order_number}}"
+              required
+            />
+            <p className="text-xs text-muted-foreground">
+              Puedes usar variables como {'{{customer_name}}'}, {'{{order_number}}'}, etc.
+            </p>
+          </div>
+
+          {/* Content Editor */}
+          <div className="space-y-2">
+            <div className="flex justify-between items-center">
+              <Label>Contenido HTML del Email *</Label>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowPreview(!showPreview)}
+                >
+                  <Eye className="h-4 w-4 mr-2" />
+                  {showPreview ? 'Ocultar' : 'Mostrar'} Vista Previa
+                </Button>
+              </div>
+            </div>
+
+            <div className={`grid gap-4 ${showPreview ? 'grid-cols-2' : 'grid-cols-1'}`}>
+              {/* Editor Section */}
+              <div className="space-y-2">
+                <div className="border rounded-lg p-2 bg-muted/50">
+                  <div className="flex gap-2 mb-2 flex-wrap">
+                    <Select onValueChange={(v) => applyTemplate(v as keyof typeof emailTemplates)}>
+                      <SelectTrigger className="w-[200px]">
+                        <SelectValue placeholder="Aplicar plantilla" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="simple">
+                          <div className="flex items-center gap-2">
+                            <FileText className="h-4 w-4" />
+                            {emailTemplates.simple.name}
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="modern">
+                          <div className="flex items-center gap-2">
+                            <Sparkles className="h-4 w-4" />
+                            {emailTemplates.modern.name}
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="minimal">
+                          <div className="flex items-center gap-2">
+                            <Code className="h-4 w-4" />
+                            {emailTemplates.minimal.name}
+                          </div>
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Textarea
+                    ref={textareaRef}
+                    id="content"
+                    value={formData.content}
+                    onChange={(e) => setFormData({ ...formData, content: e.target.value })}
+                    placeholder="<html><body>...</body></html>"
+                    rows={20}
+                    className="font-mono text-sm"
+                    required
+                  />
+                </div>
+
+                {/* Variables Panel */}
+                <div className="border rounded-lg p-3 bg-muted/30">
+                  <Label className="text-sm font-semibold mb-2 block">Variables Disponibles</Label>
+                  <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
+                    {availableVariables
+                      .filter(v => {
+                        // Filter variables based on template type
+                        if (formData.type === 'order_confirmation' || formData.type === 'order_shipped' || formData.type === 'order_delivered') {
+                          return ['customer_name', 'order_number', 'order_total', 'order_date', 'order_items', 'company_name', 'support_email', 'website_url', 'tracking_number', 'carrier', 'estimated_delivery', 'delivery_date', 'payment_method'].includes(v.key);
+                        }
+                        if (formData.type === 'password_reset') {
+                          return ['customer_name', 'reset_link', 'reset_url', 'company_name', 'support_email'].includes(v.key);
+                        }
+                        if (formData.type === 'account_welcome') {
+                          return ['customer_name', 'account_url', 'company_name', 'support_email', 'website_url'].includes(v.key);
+                        }
+                        if (formData.type === 'membership_welcome' || formData.type === 'membership_reminder') {
+                          return ['customer_name', 'membership_tier', 'membership_start_date', 'access_url', 'renewal_url', 'days_remaining', 'company_name', 'support_email'].includes(v.key);
+                        }
+                        if (formData.type === 'payment_success' || formData.type === 'payment_failed') {
+                          return ['customer_name', 'order_number', 'amount', 'payment_method', 'transaction_id', 'company_name', 'support_email'].includes(v.key);
+                        }
+                        if (formData.type === 'low_stock_alert') {
+                          return ['low_stock_products', 'product_count', 'company_name', 'support_email'].includes(v.key);
+                        }
+                        return true; // Show all for custom type
+                      })
+                      .map((varItem) => (
+                        <Badge
+                          key={varItem.key}
+                          variant="outline"
+                          className="cursor-pointer hover:bg-primary hover:text-primary-foreground transition-colors"
+                          onClick={() => insertVariable(varItem.key)}
+                          title={varItem.description}
+                        >
+                          {varItem.label}
+                        </Badge>
+                      ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Haz clic en una variable para insertarla en el contenido HTML
+                  </p>
+                </div>
+              </div>
+
+              {/* Preview Section */}
+              {showPreview && (
+                <div className="space-y-2">
+                  <Label>Vista Previa en Tiempo Real</Label>
+                  <div className="border rounded-lg p-4 bg-white max-h-[600px] overflow-y-auto">
+                    <div className="mb-4 pb-4 border-b">
+                      <p className="text-sm font-semibold text-muted-foreground mb-1">Asunto:</p>
+                      <p className="text-base font-medium">{getPreviewSubject()}</p>
+                    </div>
+                    <div 
+                      className="email-preview [&_img]:max-w-full [&_img]:h-auto [&_table]:w-full [&_table]:border-collapse [&_a]:text-[#8B4513] [&_a]:underline"
+                      dangerouslySetInnerHTML={{ __html: getPreviewHtml() }}
+                      style={{ 
+                        fontFamily: 'Arial, sans-serif',
+                        lineHeight: '1.6',
+                        maxWidth: '100%'
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Active Toggle */}
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label htmlFor="is_active">Plantilla Activa</Label>
+              <p className="text-xs text-muted-foreground">
+                Solo las plantillas activas se usarán para enviar emails
+              </p>
+            </div>
+            <Switch
+              id="is_active"
+              checked={formData.is_active}
+              onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
+            />
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              disabled={loading}
+            >
+              <X className="h-4 w-4 mr-2" />
+              Cancelar
+            </Button>
+            <Button type="submit" disabled={loading}>
+              <Save className="h-4 w-4 mr-2" />
+              {loading ? 'Guardando...' : 'Guardar Plantilla'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
