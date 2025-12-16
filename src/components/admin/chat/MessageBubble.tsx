@@ -19,123 +19,165 @@ interface MessageBubbleProps {
   onRegenerate?: () => void
 }
 
-function renderMarkdown(content: string) {
+function renderInlineMarkdown(text: string, keyPrefix: string = ''): React.ReactNode[] {
   const parts: React.ReactNode[] = []
-  let currentIndex = 0
-
-  const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g
-  const inlineCodeRegex = /`([^`]+)`/g
-  const boldRegex = /\*\*(.+?)\*\*/g
-  const italicRegex = /\*(.+?)\*/g
-  const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g
-
+  
+  // Process inline elements: bold, italic, inline code, links
+  const inlineRegex = /(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*]+\*)|(\[[^\]]+\]\([^)]+\))/g
   let lastIndex = 0
-  const matches: Array<{ type: string; start: number; end: number; content: string; lang?: string }> = []
-
   let match
-  while ((match = codeBlockRegex.exec(content)) !== null) {
-    matches.push({
-      type: 'codeBlock',
-      start: match.index,
-      end: match.index + match[0].length,
-      content: match[2],
-      lang: match[1]
-    })
-  }
-
-  while ((match = inlineCodeRegex.exec(content)) !== null) {
-    matches.push({
-      type: 'inlineCode',
-      start: match.index,
-      end: match.index + match[0].length,
-      content: match[1]
-    })
-  }
-
-  while ((match = boldRegex.exec(content)) !== null) {
-    matches.push({
-      type: 'bold',
-      start: match.index,
-      end: match.index + match[0].length,
-      content: match[1]
-    })
-  }
-
-  while ((match = italicRegex.exec(content)) !== null) {
-    matches.push({
-      type: 'italic',
-      start: match.index,
-      end: match.index + match[0].length,
-      content: match[1]
-    })
-  }
-
-  while ((match = linkRegex.exec(content)) !== null) {
-    matches.push({
-      type: 'link',
-      start: match.index,
-      end: match.index + match[0].length,
-      content: match[1],
-      lang: match[2]
-    })
-  }
-
-  matches.sort((a, b) => a.start - b.start)
-
-  matches.forEach((match, index) => {
-    if (match.start > lastIndex) {
-      parts.push(
-        <span key={`text-${index}`}>
-          {content.substring(lastIndex, match.start).split('\n').map((line, i, arr) => (
-            <span key={i}>
-              {line}
-              {i < arr.length - 1 && <br />}
-            </span>
-          ))}
-        </span>
-      )
+  let matchIndex = 0
+  
+  while ((match = inlineRegex.exec(text)) !== null) {
+    // Add text before match
+    if (match.index > lastIndex) {
+      parts.push(<span key={`${keyPrefix}text-${matchIndex}`}>{text.substring(lastIndex, match.index)}</span>)
     }
-
-    if (match.type === 'codeBlock') {
+    
+    const fullMatch = match[0]
+    
+    if (match[1]) {
+      // Inline code: `code`
       parts.push(
-        <pre key={`code-${index}`} className="bg-admin-bg-primary p-3 rounded-md overflow-x-auto my-2 text-xs">
-          <code>{match.content}</code>
-        </pre>
-      )
-    } else if (match.type === 'inlineCode') {
-      parts.push(
-        <code key={`inline-${index}`} className="bg-admin-bg-primary px-1.5 py-0.5 rounded text-xs font-mono">
-          {match.content}
+        <code key={`${keyPrefix}code-${matchIndex}`} className="bg-admin-bg-primary px-1.5 py-0.5 rounded text-xs font-mono text-admin-text-secondary">
+          {fullMatch.slice(1, -1)}
         </code>
       )
-    } else if (match.type === 'bold') {
-      parts.push(<strong key={`bold-${index}`}>{match.content}</strong>)
-    } else if (match.type === 'italic') {
-      parts.push(<em key={`italic-${index}`}>{match.content}</em>)
-    } else if (match.type === 'link') {
-      parts.push(
-        <a key={`link-${index}`} href={match.lang} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">
-          {match.content}
-        </a>
-      )
+    } else if (match[2]) {
+      // Bold: **text**
+      parts.push(<strong key={`${keyPrefix}bold-${matchIndex}`}>{fullMatch.slice(2, -2)}</strong>)
+    } else if (match[3]) {
+      // Italic: *text*
+      parts.push(<em key={`${keyPrefix}italic-${matchIndex}`}>{fullMatch.slice(1, -1)}</em>)
+    } else if (match[4]) {
+      // Link: [text](url)
+      const linkMatch = fullMatch.match(/\[([^\]]+)\]\(([^)]+)\)/)
+      if (linkMatch) {
+        parts.push(
+          <a key={`${keyPrefix}link-${matchIndex}`} href={linkMatch[2]} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">
+            {linkMatch[1]}
+          </a>
+        )
+      }
     }
-
-    lastIndex = match.end
-  })
-
-  if (lastIndex < content.length) {
-    parts.push(
-      <span key="text-end">
-        {content.substring(lastIndex).split('\n').map((line, i, arr) => (
-          <span key={i}>
-            {line}
-            {i < arr.length - 1 && <br />}
-          </span>
-        ))}
-      </span>
-    )
+    
+    lastIndex = match.index + fullMatch.length
+    matchIndex++
   }
+  
+  // Add remaining text
+  if (lastIndex < text.length) {
+    parts.push(<span key={`${keyPrefix}text-end`}>{text.substring(lastIndex)}</span>)
+  }
+  
+  return parts.length > 0 ? parts : [<span key={`${keyPrefix}empty`}>{text}</span>]
+}
 
+function renderMarkdown(content: string) {
+  const parts: React.ReactNode[] = []
+  
+  // First, extract code blocks to protect them from other processing
+  const codeBlockRegex = /```(\w+)?\n?([\s\S]*?)```/g
+  const segments: Array<{ type: 'text' | 'codeBlock'; content: string; lang?: string }> = []
+  let lastIndex = 0
+  let match
+  
+  while ((match = codeBlockRegex.exec(content)) !== null) {
+    if (match.index > lastIndex) {
+      segments.push({ type: 'text', content: content.substring(lastIndex, match.index) })
+    }
+    segments.push({ type: 'codeBlock', content: match[2], lang: match[1] })
+    lastIndex = match.index + match[0].length
+  }
+  
+  if (lastIndex < content.length) {
+    segments.push({ type: 'text', content: content.substring(lastIndex) })
+  }
+  
+  if (segments.length === 0) {
+    segments.push({ type: 'text', content })
+  }
+  
+  segments.forEach((segment, segIndex) => {
+    if (segment.type === 'codeBlock') {
+      parts.push(
+        <pre key={`codeblock-${segIndex}`} className="bg-admin-bg-primary p-3 rounded-md overflow-x-auto my-2 text-xs">
+          <code>{segment.content}</code>
+        </pre>
+      )
+    } else {
+      // Process text line by line
+      const lines = segment.content.split('\n')
+      
+      lines.forEach((line, lineIndex) => {
+        const trimmedLine = line.trim()
+        const lineKey = `${segIndex}-${lineIndex}`
+        
+        // Heading 2: ## text
+        if (trimmedLine.startsWith('## ')) {
+          const headingContent = trimmedLine.substring(3)
+          parts.push(
+            <h2 key={`h2-${lineKey}`} className="text-lg font-bold mt-4 mb-2 text-admin-text-primary">
+              {renderInlineMarkdown(headingContent, `h2-${lineKey}-`)}
+            </h2>
+          )
+        }
+        // Heading 3: ### text
+        else if (trimmedLine.startsWith('### ')) {
+          const headingContent = trimmedLine.substring(4)
+          parts.push(
+            <h3 key={`h3-${lineKey}`} className="text-base font-semibold mt-3 mb-1 text-admin-text-primary">
+              {renderInlineMarkdown(headingContent, `h3-${lineKey}-`)}
+            </h3>
+          )
+        }
+        // Heading 1: # text
+        else if (trimmedLine.startsWith('# ')) {
+          const headingContent = trimmedLine.substring(2)
+          parts.push(
+            <h1 key={`h1-${lineKey}`} className="text-xl font-bold mt-4 mb-2 text-admin-text-primary">
+              {renderInlineMarkdown(headingContent, `h1-${lineKey}-`)}
+            </h1>
+          )
+        }
+        // Unordered list: - text or * text
+        else if (trimmedLine.match(/^[-*]\s+/)) {
+          const listContent = trimmedLine.replace(/^[-*]\s+/, '')
+          parts.push(
+            <div key={`ul-${lineKey}`} className="flex items-start gap-2 ml-2 my-0.5">
+              <span className="text-admin-text-secondary mt-1">•</span>
+              <span>{renderInlineMarkdown(listContent, `ul-${lineKey}-`)}</span>
+            </div>
+          )
+        }
+        // Ordered list: 1. text
+        else if (trimmedLine.match(/^\d+\.\s+/)) {
+          const numMatch = trimmedLine.match(/^(\d+)\.\s+(.*)/)
+          if (numMatch) {
+            parts.push(
+              <div key={`ol-${lineKey}`} className="flex items-start gap-2 ml-2 my-0.5">
+                <span className="text-admin-text-secondary min-w-[1.5em]">{numMatch[1]}.</span>
+                <span>{renderInlineMarkdown(numMatch[2], `ol-${lineKey}-`)}</span>
+              </div>
+            )
+          }
+        }
+        // Empty line
+        else if (trimmedLine === '') {
+          parts.push(<div key={`br-${lineKey}`} className="h-2" />)
+        }
+        // Regular paragraph
+        else {
+          parts.push(
+            <p key={`p-${lineKey}`} className="my-0.5">
+              {renderInlineMarkdown(line, `p-${lineKey}-`)}
+            </p>
+          )
+        }
+      })
+    }
+  })
+  
   return parts.length > 0 ? parts : <span>{content}</span>
 }
 
